@@ -8,7 +8,7 @@
 
 ## 📖 简介 (Introduction)
 
-本工具旨在帮助科研人员（特别是 AI、Econ、Multi-Agent 交叉领域）高效筛选并精读每日新论文。
+本工具旨在帮助科研人员高效筛选并精读每日新论文。
 
 它不仅仅是一个搜索聚合器，更是一个**AI 阅读器**。它能自动解析 ArXiv 的 HTML 或 PDF 版本，提取正文内容，并利用 LLM (GPT-4o/DeepSeek) 进行深度剖析，从背景痛点到实验数据，一览无余。
 
@@ -46,7 +46,7 @@
 
 ```
 # 克隆项目
-git clone [https://github.com/your-username/arxiv-daily-tracker.git](https://github.com/your-username/arxiv-daily-tracker.git)
+git clone https://github.com/Miracle1207/arxiv-daily-tracker.git
 cd arxiv-daily-tracker
 
 # 安装依赖
