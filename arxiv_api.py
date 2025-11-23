@@ -7,43 +7,44 @@ import streamlit as st
 @st.cache_data(ttl=3600)
 def fetch_arxiv_papers(query, days_back, max_display_results):
     """
-    策略：宽进严出 (完全还原用户原始代码逻辑)。
-    1. 向 API 请求比用户需要多 5 倍的数据 (buffer)。
-    2. 强制按 Relevance (相关性) 排序。
-    3. 在本地进行“时间清洗”，剔除老文章。
+    策略：时间优先 + 精准匹配 (Time-First Strict Search)。
+    1. 按 'SubmittedDate' (提交时间) 倒序抓取。
+    2. 这样保证了只要最近几天有符合 'utils.py' 中构造的精准 query 的论文，
+       它一定会被抓取到，而不会被埋没在老的高引论文中。
     """
     
     # 计算截止日期
     today = datetime.datetime.now(datetime.timezone.utc)
     start_date = today - timedelta(days=days_back)
     
-    # 1. 设定抓取缓冲区 (Buffer)
-    # 原始逻辑: max_display_results * 5
-    fetch_limit = max_display_results * 5
+    # 设定缓冲区：因为是按时间排序，我们不需要抓太多
+    # 只要抓取量覆盖了"过去N天"的所有论文即可，给个 10 倍缓冲很安全
+    fetch_limit = max_display_results * 10
     
     client = arxiv.Client()
     search = arxiv.Search(
         query=query,
         max_results=fetch_limit,
-        sort_by=arxiv.SortCriterion.Relevance,  # 强制按相关性
+        sort_by=arxiv.SortCriterion.SubmittedDate,  # <--- 关键修改：按时间排序
         sort_order=arxiv.SortOrder.Descending
     )
     
     filtered_results = []
     
-    # 2. 遍历并清洗数据
     try:
         for result in client.results(search):
-            # [时间过滤器]
-            # 如果文章发布时间 早于 我们设定的起始时间，丢弃
+            # 1. 时间硬过滤
             if result.published < start_date:
-                continue
+                # 因为是按时间倒序，一旦遇到早于 start_date 的，
+                # 说明后面的更老，直接停止抓取 (极大提升效率)
+                break
             
             filtered_results.append(result)
             
-            # 如果过滤后的数量已经够了用户要的数量，就停止
+            # 数量够了就停止
             if len(filtered_results) >= max_display_results:
                 break
+    
     except Exception as e:
         st.error(f"ArXiv API Error: {e}")
         return []
