@@ -1,97 +1,108 @@
+# 📑 ArXiv 智能论文追踪与深度阅读助手
 
-# 📑 ArXiv Paper Daily Tracker
+> Your Personal AI Research Assistant.
+>
+> 一个基于 Python Streamlit 的全栈科研工具。不仅仅是搜索，更能阅读全文。专为解决“信息过载”和“读论文太慢”而生。
 
-> **Your Personal AI Research Assistant.** \> 一个基于 Python Streamlit 的高效 ArXiv 论文追踪工具，专为解决“信息过载”和“搜索不准”而生。
-
-  
+![img.png](img.png)
 
 ## 📖 简介 (Introduction)
 
-你是否觉得 ArXiv 上的论文太多，或者官方搜索经常搜出“驴唇不对马嘴”的结果？
-这个工具旨在帮助研究人员（特别是 AI、CS、Econ 交叉领域）高效筛选每日新论文。
+本工具旨在帮助科研人员（特别是 AI、Econ、Multi-Agent 交叉领域）高效筛选并精读每日新论文。
 
-**核心差异化优势：**
+它不仅仅是一个搜索聚合器，更是一个**AI 阅读器**。它能自动解析 ArXiv 的 HTML 或 PDF 版本，提取正文内容，并利用 LLM (GPT-4o/DeepSeek) 进行深度剖析，从背景痛点到实验数据，一览无余。
 
-  * **智能“宽进严出”策略**：解决了 ArXiv API “按时间排序相关性差，按相关性排序时间太旧”的痛点。
-  * **跨学科组合包**：一键搜索 AI + 金融、AI + 科学等交叉领域，防止漏掉投递到非 CS 板块的优质论文。
-  * **笔记友好**：一键导出 Markdown 格式，完美适配 Obsidian / Notion。
+## ✨ 核心特性 (Key Features)
 
-## ✨ 功能特性 (Features)
+### 1. 🧠 AI 全文深度解读 (Full-Text Analysis)
 
-  * **🔍 高级布尔搜索**：支持 `AND`, `OR`, `NOT` 及括号组合逻辑。
-  * **🎯 精准模式**：提供“仅搜索标题”开关，拒绝摘要里的关键词“蹭热度”。
-  * **📦 智能领域组合**：
-      * `AI & CS`: 涵盖 CV, NLP, ML, RO 等主流计算机子领域。
-      * `AI + Fin/Econ`: 专为 AI for Science/Economics 设计，包含 `q-fin`, `econ` 等板块。
-  * **📅 智能时效过滤**：在保证相关性的前提下（Relevance Sort），本地二次过滤出“过去 N 天”的论文。
-  * **📝 一键导出**：生成包含标题、作者、链接、摘要的格式化报告。
+不再局限于摘要！本工具具备**HTML/PDF 双模解析能力**：
+
+- **HTML 优先 (极速)**：自动检测并抓取 ArXiv HTML 版本，去除参考文献和导航，秒级获取纯净正文。
+- **PDF 兜底**：如果没有 HTML，自动下载 PDF 并提取前 N 页核心内容。
+- **5维深度报告**：AI 会阅读正文并回答：
+  1. 🧐 **背景与痛点** (SOTA 的局限性是什么？)
+  2. 🏗️ **方法论细节** (具体的架构、Loss 函数设计)
+  3. 🧪 **实验与评估** (数据集、Baseline、具体提升数值)
+  4. 🤔 **优势与局限** (Pros & Cons)
+  5. 💡 **总结与启发**
+
+### 2. 🔍 智能搜索策略
+
+- **宽进严出 (Broad Entry, Strict Exit)**：向 API 请求 5 倍数据量并强制按**相关性**排序，再在本地进行**时间过滤**。解决“按时间搜不准，按相关性搜太旧”的难题。
+- **专家级预设 (Expert Presets)**：
+  - `AI + Economics`: 包含 Mechanism Design, Game Theory 等硬核关键词。
+  - `Agents`: 覆盖 LLM Agent, RL Agent, Multi-Agent 及 Cooperative AI。
+  - `World Models`: 包含 MBRL, Generative World Model 等。
+
+### 3. 🛡️ 安全与便捷
+
+- **环境变量支持**：支持从系统环境变量自动读取 `OPENAI_API_KEY`，无需每次手动输入。
+- **模块化架构**：代码拆分为 API、阅读器、AI Agent 等独立模块，易于维护和二次开发。
 
 ## 🛠️ 快速开始 (Quick Start)
 
-### 1\. 环境准备
+### 1. 环境准备
 
-确保你的电脑上安装了 Python (3.8+)。
-
-```bash
-# 克隆项目 (如果你有 git)
-git clone https://github.com/your-username/arxiv-daily-tracker.git
+```
+# 克隆项目
+git clone [https://github.com/your-username/arxiv-daily-tracker.git](https://github.com/your-username/arxiv-daily-tracker.git)
 cd arxiv-daily-tracker
 
-# 或者直接下载代码文件夹
+# 安装依赖
+pip install -r requirements.txt
 ```
 
-### 2\. 安装依赖
+### 2. 配置 API Key (推荐)
 
-建议使用虚拟环境，或者直接安装：
+为了安全和便捷，建议将 API Key 设置为环境变量。
 
-```bash
-pip install streamlit arxiv pandas tenacity
+**MacOS / Linux:**
+
+```
+export OPENAI_API_KEY="sk-你的密钥"
 ```
 
-### 3\. 运行应用
+**Windows (PowerShell):**
 
-在终端中运行以下命令：
-
-```bash
-streamlit run main.py
+```
+$env:OPENAI_API_KEY="sk-你的密钥"
 ```
 
-浏览器会自动打开 `http://localhost:8501`。
+*注：你也可以直接在网页侧边栏手动输入 Key。*
 
-## 💡 搜索技巧 (Search Tips)
+### 3. 运行应用
 
-为了获得最精准的结果，建议参考以下输入格式：
+```
+streamlit run app.py
+```
 
-| 你的需求 | 输入示例 |
-| :--- | :--- |
-| **精确短语匹配** | `"Chain of Thought"` (加双引号) |
-| **逻辑组合** | `(LLM OR Transformer) AND (Reasoning OR Planning)` |
-| **AI + 经济学 (推荐)** | `(Economic OR Finance) AND (LLM OR RL)` <br> *注：请选择 "AI + Fin/Econ" 领域分类* |
-| **仅看标题** | 在侧边栏勾选 ✅ **"只搜索标题 (更精准)"** |
+浏览器将自动打开 `http://localhost:8501`。
 
-## ⚙️ 核心逻辑说明 (How It Works)
+## 📂 项目结构 (Project Structure)
 
-本工具采用了 **Relevance-First, Date-Filter-Second** 的策略：
-
-1.  **Fetch (抓取)**: 向 ArXiv API 请求比用户所需多 `5倍` 的数据，强制按 **相关性 (Relevance)** 排序。
-2.  **Filter (清洗)**: 在本地 Python 内存中，剔除发布日期早于设定时间范围（如 7 天前）的论文。
-3.  **Display (展示)**: 最终展示给你的，是 **既高度相关、又是最近发布** 的高质量论文。
-
-## 📂 项目结构
-
-```text
+```
 .
-├── main.py           # 主程序代码 (Streamlit 界面与逻辑)
-├── README.md        # 项目文档
+├── app.py             # 主程序入口 (UI 逻辑与调度)
+├── arxiv_api.py       # 搜索模块 (负责与 ArXiv API 交互、清洗数据)
+├── paper_reader.py    # 阅读模块 (核心：HTML解析 + PDF下载降级策略)
+├── ai_agent.py        # AI 模块 (Prompt 工程、LLM 调用)
+├── utils.py           # 工具模块 (常量定义、查询构建、导出功能)
+├── requirements.txt   # 依赖列表
+└── README.md          # 说明文档
 ```
 
-## 📝 TODO / 未来计划
+## 💡 使用技巧 (Tips)
 
-  - [ ] 集成 LLM (OpenAI/Claude) API，自动生成中文一句话总结。
-  - [ ] 增加 Semantic Scholar 引用数显示。
-  - [ ] 支持定时的邮件推送功能。
+1. **关于模型选择**：
+   - 推荐使用 **`gpt-4o-mini`** 或 **`deepseek-chat`**。
+   - 因为全文阅读会消耗较多 Token（每篇约 3k-8k tokens），这两个模型在长文本处理能力和性价比上是最佳选择。
+2. **关于 Base URL**：
+   - 如果你在国内且使用 OpenAI 官方 Key，请填写中转商地址。
+   - 如果你使用 DeepSeek，请填 `https://api.deepseek.com`。
+3. **HTML vs PDF**：
+   - 工具默认优先尝试 HTML（速度极快）。点击“AI 全文解读”后，请留意状态提示：`✅ 获取成功 (HTML)` 代表极速体验，`✅ 获取成功 (PDF)` 代表下载了解析版。
 
 ## 🤝 贡献 (Contributing)
 
-欢迎提交 Issue 或 Pull Request 来改进这个工具！
-
+欢迎提交 PR 改进 Prompt 或增加新的领域预设！

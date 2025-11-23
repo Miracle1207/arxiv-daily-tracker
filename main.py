@@ -3,7 +3,8 @@ import arxiv
 import datetime
 from datetime import timedelta
 import pandas as pd
-
+# 在 app.py 最上面导入
+from openai import OpenAI
 # ==========================================
 # 页面配置
 # ==========================================
@@ -19,7 +20,7 @@ st.set_page_config(
 st.sidebar.header("🔍 搜索设置")
 
 # 1. 关键词输入
-keywords = st.sidebar.text_input("请输入关键词 (支持 AND, OR)", value="LLM AND Reasoning")
+keywords = st.sidebar.text_input("请输入关键词 (支持 AND, OR)", value='(Economic OR Economics OR Finance OR Financial OR Market) AND (LLM OR "Large Language Model" OR RL OR "Reinforcement Learning")')
 
 # 2. 宽泛领域选择 (解决分类不准的问题)
 category_bundle = st.sidebar.selectbox(
@@ -54,6 +55,8 @@ sort_by_options = {
 sort_text = st.sidebar.selectbox("排序方式", list(sort_by_options.keys()))
 sort_criterion = sort_by_options[sort_text]
 
+st.sidebar.header("🤖 AI 设置")
+api_key = st.sidebar.text_input("OpenAI API Key", type="password", help="输入你的 API Key 以启用总结功能")
 
 # ==========================================
 # 核心逻辑：构建查询并获取数据
@@ -72,32 +75,6 @@ def build_query(keywords, category_bundle_key):
     
     return final_query
 
-
-# 获取数据的函数 (带缓存，防止重复请求)
-# @st.cache_data(ttl=3600)  # 缓存1小时
-# def fetch_arxiv_papers(query, max_results, sort_criterion):
-#     client = arxiv.Client()
-#     search = arxiv.Search(
-#         query=query,
-#         max_results=max_results,
-#         sort_by=sort_criterion,
-#         sort_order=arxiv.SortOrder.Descending
-#     )
-#
-#     results = []
-#     for result in client.results(search):
-#         # 二次过滤：确保时间符合（API的sortBy date有时候不绝对精确过滤，手动卡一下更准）
-#         # 注意：Relevance 排序时，API 可能会返回旧论文，这里根据用户需求决定是否严格按时间过滤
-#         # 如果用户选的是“按时间排序”，通常不需要手动过滤太多，但为了保险起见：
-#         if sort_criterion == arxiv.SortCriterion.SubmittedDate:
-#             if result.published < start_date:
-#                 continue
-#
-#         results.append(result)
-#     return results
-
-
-from tenacity import retry, stop_after_attempt, wait_fixed
 
 
 # ==========================================
@@ -154,6 +131,40 @@ def fetch_arxiv_papers(query, days_back, max_display_results):
     return filtered_results
 
 
+def get_ai_summary(abstract, title, api_key):
+    if not api_key:
+        return "⚠️ 请先在左侧边栏输入 OpenAI API Key"
+    
+    client = OpenAI(api_key=api_key)
+    
+    # 提示词工程 (Prompt Engineering)
+    system_prompt = """
+    你是一个专业的 AI 科研助手。请根据用户提供的论文标题和摘要，用中文回答以下5个问题。
+    请保持回答简洁、专业，逻辑清晰。如果摘要中没有提及某点，请说明“摘要未提及”。
+
+    输出格式要求：
+    1. **🎯 问题与方法**: （本文使用了什么方法解决了什么问题）...
+    2. **⚙️ 关键技术**: ...
+    3. **💡 核心创新**: (对比现有方法有何不同)
+    4. **📊 验证与结果**: (使用了什么数据，提升了多少)
+    5. **🚀 研究意义**: ...
+    """
+    
+    user_prompt = f"Title: {title}\nAbstract: {abstract}"
+    
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",  # 或者 gpt-4o-mini (更便宜更快)
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.3  # 低温度保证事实准确性
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"❌ AI 调用失败: {e}"
+
 # ==========================================
 # 主界面展示
 # ==========================================
@@ -178,26 +189,43 @@ if st.button("开始抓取", type="primary"):
                     
                     # 用于收集导出数据的列表
                     export_text = f"# ArXiv Papers: {keywords}\nDate: {datetime.datetime.now().strftime('%Y-%m-%d')}\n\n"
-                    
+
+                    # 初始化 session state 用于存储 AI 总结的结果，防止点击按钮后页面刷新结果消失
+                    if "summaries" not in st.session_state:
+                        st.session_state.summaries = {}
+
                     for i, paper in enumerate(papers):
-                        # 格式化作者 (只显示前3位)
-                        authors = [a.name for a in paper.authors]
-                        author_str = ", ".join(authors[:3]) + (" et al." if len(authors) > 3 else "")
-                        
-                        # 论文卡片
+                        # 论文卡片布局
                         with st.container():
                             col1, col2 = st.columns([0.85, 0.15])
                             with col1:
                                 st.subheader(f"{i + 1}. {paper.title}")
+                                # 作者处理
+                                authors = [a.name for a in paper.authors]
+                                author_str = ", ".join(authors[:3]) + (" et al." if len(authors) > 3 else "")
+            
                                 st.markdown(
                                     f"**✍️ 作者:** {author_str} | **📅 发布:** {paper.published.strftime('%Y-%m-%d')}")
                                 st.markdown(f"**🔗 链接:** [PDF]({paper.pdf_url}) | [ArXiv Page]({paper.entry_id})")
-                            
-                            # 摘要折叠区域
-                            with st.expander("📖 查看摘要 (Abstract)"):
+        
+                            with col2:
+                                # 这是一个独特的 Key，确保每个按钮唯一
+                                btn_key = f"btn_{paper.entry_id}"
+                                if st.button("🤖 AI 深度解读", key=btn_key):
+                                    # 点击按钮时，调用 AI
+                                    with st.spinner("AI 正在阅读摘要..."):
+                                        summary = get_ai_summary(paper.summary, paper.title, api_key)
+                                        st.session_state.summaries[paper.entry_id] = summary
+        
+                            # 展示 AI 总结结果 (如果存在)
+                            if paper.entry_id in st.session_state.summaries:
+                                st.markdown("#### 🤖 AI 深度分析报告")
+                                st.info(st.session_state.summaries[paper.entry_id])
+        
+                            # 原有的摘要折叠
+                            with st.expander("📖 查看原始摘要 (Abstract)"):
                                 st.write(paper.summary)
-                                st.caption(f"Categories: {', '.join(paper.categories)}")
-                            
+        
                             st.divider()
                         
                         # 准备导出文本
