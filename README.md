@@ -3,7 +3,8 @@
 
 > **Your Personal AI Research Assistant.** \> 一个基于 Python Streamlit 的高效 ArXiv 论文追踪工具，专为解决“信息过载”和“搜索不准”而生。
 
-  
+  <img width="1909" height="1603" alt="image" src="https://github.com/user-attachments/assets/e197e400-e8f6-4936-b93d-4e73118cfbd3" />
+ArXiv Paper Daily Tracker 网页示意图
 
 ## 📖 简介 (Introduction)
 
