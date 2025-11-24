@@ -1,12 +1,11 @@
 import streamlit as st
 import datetime
 import os
-# 导入自定义模块
 import utils
 import arxiv_api
 import paper_reader
 import ai_agent
-import storage  # <--- 保持导入存储模块
+import storage
 
 # ==========================================
 # 页面配置
@@ -16,7 +15,6 @@ st.set_page_config(page_title="ArXiv 论文小助手", page_icon="📑", layout=
 # ==========================================
 # 侧边栏：全局设置 & 模式切换
 # ==========================================
-# 模式切换放在最上面，方便切换
 mode = st.sidebar.radio("功能模式", ["🔍 论文搜索", "⭐ 我的收藏"])
 st.sidebar.divider()
 
@@ -28,7 +26,7 @@ if "summaries" not in st.session_state:
 
 
 # ==========================================
-# 辅助函数：统一渲染卡片 (保持 UI 风格一致)
+# 辅助函数：统一渲染卡片
 # ==========================================
 def render_paper_card(paper, is_favorite_mode=False, api_key=None, base_url=None, model_name=None):
     """
@@ -36,21 +34,24 @@ def render_paper_card(paper, is_favorite_mode=False, api_key=None, base_url=None
     """
     # 统一数据格式
     if isinstance(paper, dict):
-        # 收藏页的数据是字典
         title = paper['title']
         entry_id = paper['entry_id']
         pdf_url = paper['pdf_url']
         published_date = paper['published']
         authors_list = paper['authors']
         summary_text = paper['summary']
+        # 获取标签和笔记 (仅收藏模式下有效)
+        current_tags = paper.get('tags', [])
+        current_notes = paper.get('notes', "")
     else:
-        # 搜索页的数据是 arxiv.Result 对象
         title = paper.title
         entry_id = paper.entry_id
         pdf_url = paper.pdf_url
         published_date = paper.published.strftime('%Y-%m-%d')
         authors_list = [a.name for a in paper.authors]
         summary_text = paper.summary
+        current_tags = []
+        current_notes = ""
     
     # --- UI 渲染 ---
     with st.container():
@@ -58,9 +59,14 @@ def render_paper_card(paper, is_favorite_mode=False, api_key=None, base_url=None
         
         with col1:
             st.subheader(title)
-            author_str = ", ".join(authors_list[:3]) + (" et al." if len(authors_list) > 3 else "")
             
-            # 链接
+            # [新增] 如果有标签，在标题下方显示
+            if is_favorite_mode and current_tags:
+                # 使用 Markdown 模拟 Tag 样式
+                tag_str = " ".join([f"`{t}`" for t in current_tags])
+                st.markdown(f"🏷️ {tag_str}")
+            
+            author_str = ", ".join(authors_list[:3]) + (" et al." if len(authors_list) > 3 else "")
             html_link = f"https://arxiv.org/html/{entry_id.split('/')[-1]}"
             st.markdown(f"**✍️ 作者:** {author_str} | **📅 发布:** {published_date}")
             st.markdown(f"[HTML 阅读]({html_link}) | [PDF 下载]({pdf_url}) | [ArXiv 页面]({entry_id})")
@@ -77,7 +83,9 @@ def render_paper_card(paper, is_favorite_mode=False, api_key=None, base_url=None
                 else:
                     status.info(f"✅ 正在阅读 ({src})...")
                     summary = ai_agent.get_ai_summary(content, title, api_key, base_url, model_name)
+                    
                     st.session_state.summaries[entry_id] = summary
+                    storage.update_favorite_summary(entry_id, summary)
                     status.empty()
             
             # 2. 收藏/移除按钮
@@ -86,12 +94,28 @@ def render_paper_card(paper, is_favorite_mode=False, api_key=None, base_url=None
                     storage.remove_favorite(entry_id)
             else:
                 if st.button("❤️ 收藏", key=f"fav_{entry_id}"):
-                    storage.save_favorite(paper)
+                    current_ai_summary = st.session_state.summaries.get(entry_id)
+                    storage.save_favorite(paper, ai_summary=current_ai_summary)
         
         # 展示 AI 结果
         if entry_id in st.session_state.summaries:
-            st.markdown("#### 📝 AI 深度分析")
-            st.info(st.session_state.summaries[entry_id])
+            with st.expander("📝 AI 深度分析", expanded=True):
+                st.info(st.session_state.summaries[entry_id])
+        
+        # [新增] 标签与笔记编辑区 (仅在收藏模式显示)
+        if is_favorite_mode:
+            with st.expander("🏷️ 编辑标签 & 📝 个人笔记"):
+                with st.form(key=f"form_{entry_id}"):
+                    # 标签输入
+                    tags_str = st.text_input("标签 (用逗号分隔, 例如: LLM, Economics)", value=", ".join(current_tags))
+                    # 笔记输入
+                    notes_content = st.text_area("个人笔记 / 备忘录", value=current_notes, height=100)
+                    
+                    if st.form_submit_button("💾 保存更改"):
+                        # 处理标签字符串 -> 列表
+                        new_tags = [t.strip() for t in tags_str.split(",") if t.strip()]
+                        storage.update_favorite_details(entry_id, new_tags, notes_content)
+                        st.rerun()
         
         with st.expander("📖 摘要 (Abstract)"):
             st.write(summary_text)
@@ -100,13 +124,11 @@ def render_paper_card(paper, is_favorite_mode=False, api_key=None, base_url=None
 
 
 # ==========================================
-# 页面 1: 🔍 论文搜索 (还原你的经典界面)
+# 页面 1: 🔍 论文搜索
 # ==========================================
 if mode == "🔍 论文搜索":
-    # --- 侧边栏：搜索设置 (仅在搜索模式显示) ---
     st.sidebar.header("🔍 搜索设置")
     
-    # 预设与关键词
     search_presets = {
         "1. AI + Economics":
             '(Economic OR Economics OR Finance OR Financial OR Market OR "Behavioral Economics") AND (LLM OR "Large Language Model" OR RL OR "Reinforcement Learning")',
@@ -115,7 +137,7 @@ if mode == "🔍 论文搜索":
         "3. World Models":
             '"World Model" OR "World Models" OR "Generative World Model" OR "Model-Based RL" OR MBRL OR "Predictive Model"',
         "4. Evolution":
-        'agent AND LLM AND (evolution OR evole)',
+            'agent AND LLM AND (evolution OR evole)',
         "5. 自定义 (空白)": ""
     }
     selected_preset_key = st.sidebar.selectbox("快速选择预设", options=list(search_presets.keys()), index=0)
@@ -133,12 +155,9 @@ if mode == "🔍 论文搜索":
     base_url = st.sidebar.text_input("Base URL", value="https://api.openai.com/v1")
     model_name = st.sidebar.text_input("模型名称", value="gpt-4o-mini")
     
-    # --- 主界面 UI (还原经典风格) ---
     st.title("📑 ArXiv Paper Daily Tracker")
-    # 还原你想要的小字展示
-    st.caption(f"当前模式: {category_bundle} | 窗口: {days_back}天")
+    st.caption(f"当前模式: {category_bundle} | 窗口: {days_back}天 | 关键词：{keywords}")
     
-    # 还原“开始抓取”按钮文案
     if st.button("开始抓取", type="primary"):
         if not keywords:
             st.warning("请输入关键词！")
@@ -154,39 +173,59 @@ if mode == "🔍 论文搜索":
                     st.session_state.summaries = {}
                     st.success(f"成功找到 {len(papers)} 篇论文！")
     
-    # 展示结果
     if st.session_state.papers:
         st.divider()
         for paper in st.session_state.papers:
             render_paper_card(paper, is_favorite_mode=False, api_key=api_key, base_url=base_url, model_name=model_name)
         
-        # 导出功能
         st.header("📤 导出结果")
         if st.button("生成 Markdown 报告"):
             export_text = utils.generate_export_text(st.session_state.papers, keywords)
             st.download_button("下载文件", export_text, f"arxiv_report_{datetime.date.today()}.md")
 
 # ==========================================
-# 页面 2: ⭐ 我的收藏 (新功能)
+# 页面 2: ⭐ 我的收藏
 # ==========================================
 elif mode == "⭐ 我的收藏":
     st.title("⭐ 我的论文收藏夹")
     
-    # 收藏页也需要 AI 设置，以便在这里直接解读
     st.sidebar.header("🤖 AI 设置")
     env_api_key = os.getenv("OPENAI_API_KEY", "")
     api_key = st.sidebar.text_input("API Key", value=env_api_key, type="password")
     base_url = st.sidebar.text_input("Base URL", value="https://api.openai.com/v1")
     model_name = st.sidebar.text_input("模型名称", value="gpt-4o-mini")
     
+    # 1. 加载所有收藏
     favorites = storage.load_favorites()
     
     if not favorites:
         st.info("还没有收藏任何论文。去搜索页点个 ❤️ 吧！")
     else:
-        st.markdown(f"共收藏了 **{len(favorites)}** 篇优质论文")
+        # [新增] 顶部标签筛选器
+        all_tags = storage.get_all_unique_tags()
+        if all_tags:
+            selected_tags = st.multiselect("🏷️ 按标签筛选 (显示满足任一标签的论文)", options=all_tags)
+        else:
+            selected_tags = []
+        
+        # 执行筛选逻辑
+        if selected_tags:
+            # 只要包含选中的任意一个标签，就显示 (OR 逻辑)
+            display_papers = [
+                p for p in favorites
+                if any(tag in p.get('tags', []) for tag in selected_tags)
+            ]
+        else:
+            display_papers = favorites
+        
+        st.markdown(f"显示 **{len(display_papers)}** 篇论文 (总收藏: {len(favorites)})")
         st.divider()
         
-        for paper_dict in favorites:
+        for paper_dict in display_papers:
+            # 自动加载 AI 解读
+            entry_id = paper_dict['entry_id']
+            if paper_dict.get('ai_summary') and entry_id not in st.session_state.summaries:
+                st.session_state.summaries[entry_id] = paper_dict['ai_summary']
+            
             render_paper_card(paper_dict, is_favorite_mode=True, api_key=api_key, base_url=base_url,
                               model_name=model_name)
